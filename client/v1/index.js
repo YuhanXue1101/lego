@@ -28,7 +28,9 @@ console.log(MY_FAVORITE_DEALERS[0]);
 // 🎯 TODO 1: The highest reduction
 // 0. I have 2 favorite lego sets shopping communities stored in MY_FAVORITE_DEALERS variable
 // 1. Create a new variable and assign it the link of the lego set with the highest reduction I can find on these 2 websites
+const highest_reduc="https://www.cdiscount.com/juniors/jeux-de-construction/lego-architecture-21062-la-fontaine-de-trevi-set/f-12083-lego21062.html#mpos=15|cd";
 // 2. Log the variable
+console.log("highest_reduc:", highest_reduc);
 
 /**
  * 🧱
@@ -41,30 +43,69 @@ console.log(MY_FAVORITE_DEALERS[0]);
 
 // 🎯 TODO 2: Number of deals
 // 1. Create a variable and assign it the number of deals
+const number_of_deals = deals.length;
 // 2. Log the variable
+console.log("number_of_deals:", number_of_deals);
 
 // 🎯 TODO 3: Website name
 // 1. Create a variable and assign it the list of shopping community name only
 // 2. Log the variable
 // 3. Log how many shopping communities we have
 
+var shopping_communities = [];
+for (var i = 0; i < deals.length; i++) {
+  var community = deals[i].community;
+  shopping_communities.push(community);
+}
+console.log("shopping_communities:", shopping_communities);
+
+for (var currentDeal of deals) {
+  console.log(currentDeal.community)
+}
+
 // 🎯 TODO 4: Sort by price
 // 1. Create a function to sort the deals by price
 // 2. Create a variable and assign it the list of sets by price from lowest to highest
 // 3. Log the variable
+
+function sortByPrice(deallist) {
+  return deallist.sort((a, b) =>  a.price - b.price);
+};
+const sorted_deals_by_price = sortByPrice([...deals]); // we use the spread operator to avoid mutating the original list of deals
+console.log("sorted_deals_by_price:", sorted_deals_by_price);
+
 
 // 🎯 TODO 5: Sort by date
 // 1. Create a function to sort the deals by date
 // 2. Create a variable and assign it the list of deals by date from recent to old
 // 3. Log the variable
 
+function sortByDate(deallist) {
+  return deallist.sort((a, b) =>  new Date(b.date) - new Date(a.date));
+}
+
+const sorted_deals_by_date = sortByDate([...deals]); 
+console.log("sorted_deals_by_date:", sorted_deals_by_date);
+
 // 🎯 TODO 6: Filter a specific percentage discount range
 // 1. Filter the list of deals between 50% and 75%
 // 2. Log the list
 
+const filtered_deals_2 = (min, max) => {
+  return deals.filter(deal => deal.discount >= min && deal.discount <= max);
+};
+console.log("filtered_deals_2:", filtered_deals_2(50, 75));
 // 🎯 TODO 7: Average percentage discount
 // 1. Determine the average percentage discount of the deals
 // 2. Log the average
+const discounts = deals
+  .map(deal => deal.discount)
+  .filter(d => typeof d === "number");
+
+const average_discount =
+  discounts.reduce((sum, d) => sum + d, 0) / discounts.length;
+
+console.log(average_discount);
 
 /**
  * 🏎
