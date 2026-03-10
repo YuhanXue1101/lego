@@ -96,10 +96,14 @@ const filtered_deals_2 = (min, max) => {
 };
 console.log("filtered_deals_2:", filtered_deals_2(50, 75));
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 
 =======
 >>>>>>> cdafb68 (save local changes)
+=======
+
+>>>>>>> ff5cda0 (test)
 // 🎯 TODO 7: Average percentage discount
 // 1. Determine the average percentage discount of the deals
 // 2. Log the average

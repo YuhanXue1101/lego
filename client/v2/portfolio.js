@@ -48,7 +48,6 @@ const filterBtnFavorite = document.querySelector('#filter-favorite');
 const filterBtns = document.querySelectorAll('.filter-btn');
 const selectSort = document.querySelector('#sort-select');
 
-
 /**
  * Set global value
  * @param {Array} result - deals to display
