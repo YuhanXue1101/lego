@@ -24,6 +24,7 @@ This endpoint accepts the following optional query string parameters:
 // current deals on the page
 let currentDeals = [];
 let currentPagination = {};
+let currentFilter = null;
 
 // instantiate the selectors
 const selectShow = document.querySelector('#show-select');
@@ -31,6 +32,10 @@ const selectPage = document.querySelector('#page-select');
 const selectLegoSetIds = document.querySelector('#lego-set-id-select');
 const sectionDeals= document.querySelector('#deals');
 const spanNbDeals = document.querySelector('#nbDeals');
+const filterBtnDiscount = document.querySelector('#filter-discount');
+const filterBtnCommented = document.querySelector('#filter-commented');
+const filterBtnHot = document.querySelector('#filter-hot');
+const filterBtns = document.querySelectorAll('.filter-btn');
 
 /**
  * Set global value
@@ -45,14 +50,19 @@ const setCurrentDeals = ({result, meta}) => {
 /**
  * Fetch deals from api
  * @param  {Number}  [page=1] - current page to fetch
- * @param  {Number}  [size=12] - size of the page
+ * @param  {Number}  [size=6] - size of the page
+ * @param  {String}  [filter=null] - filter type (discount, commented, hot)
  * @return {Object}
  */
-const fetchDeals = async (page = 1, size = 6) => {
+const fetchDeals = async (page = 1, size = 6, filter = null) => {
   try {
-    const response = await fetch(
-      `https://lego-api-blue.vercel.app/deals?page=${page}&size=${size}`
-    );
+    let url = `https://lego-api-blue.vercel.app/deals?page=${page}&size=${size}`;
+    
+    if (filter) {
+      url += `&filter=${filter}`;
+    }
+    
+    const response = await fetch(url);
     const body = await response.json();
 
     if (body.success !== true) {
@@ -108,6 +118,24 @@ const renderPagination = pagination => {
 };
 
 /**
+ * Update active filter button styling
+ * @param  {String} activeFilter - the current active filter
+ */
+const updateFilterButtons = (activeFilter) => {
+  filterBtns.forEach(btn => {
+    if ((activeFilter === 'discount' && btn.id === 'filter-discount') ||
+        (activeFilter === 'commented' && btn.id === 'filter-commented') ||
+        (activeFilter === 'hot' && btn.id === 'filter-hot')) {
+      btn.style.fontWeight = 'bold';
+      btn.style.textDecoration = 'underline';
+    } else {
+      btn.style.fontWeight = 'normal';
+      btn.style.textDecoration = 'none';
+    }
+  });
+};
+
+/**
  * Render lego set ids selector
  * @param  {Array} lego set ids
  */
@@ -146,6 +174,17 @@ const render = (deals, pagination) => {
  */
 selectShow.addEventListener('change', async (event) => {
   const deals = await fetchDeals(currentPagination.currentPage, parseInt(event.target.value));
+
+  setCurrentDeals(deals);
+  render(currentDeals, currentPagination);
+});
+
+/**
+ * Select a specific page to browse
+ */
+selectPage.addEventListener('change', async (event) => {
+  const pageSize = parseInt(selectShow.value);
+  const deals = await fetchDeals(parseInt(event.target.value), pageSize);
 
   setCurrentDeals(deals);
   render(currentDeals, currentPagination);
