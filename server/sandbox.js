@@ -58,4 +58,4 @@ const [,, param] = process.argv;
 
 scrapeDealabs(param); 
 // scrapeADLB(param);
-//scrapeVinted(param);
+// scrapeVinted(param);
