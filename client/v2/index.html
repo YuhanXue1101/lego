@@ -20,9 +20,10 @@
         <select name="page" id="page-select"> </select>
       </div>
       <div id="filters">
-        <button id="filter-discount">By best discount</button>
-        <button id="filter-commented">By most commented</button>
-        <button id="filter-hot">By hot deals</button>
+        <button class="filter-btn" id="filter-discount">By best discount</button>
+        <button class="filter-btn" id="filter-commented">By most commented</button>
+        <button class="filter-btn" id="filter-hot">By hot deals</button>
+        <button class="filter-btn" id="filter-favorite">By favorite</button>
       </div>
       <div id="sort">
         <label for="sort-select">Sort:</label>
@@ -53,22 +54,26 @@
       </div>
       <div>
         <span>p5 sales price value</span>
-        <span>0</span>
+        <span id="p5Price">0</span>
       </div>
       <div>
         <span>p25 sales price value</span>
-        <span>0</span>
+        <span id="p25Price">0</span>
       </div>
       <div>
         <span>p50 sales price value</span>
-        <span>0</span>
+        <span id="p50Price">0</span>
       </div>
       <div>
         <span>Lifetime value</span>
-        <span>10 days</span>
+        <span id="lifetimeDays">0 days</span>
       </div>
     </section>
     <section id="deals"></section>
+    <section id="vinted-sales">
+      <h2>Vinted sales</h2>
+      <ul id="vinted-sales-list"></ul>
+    </section>
     <script type="text/javascript" charset="UTF-8" src="utils.js"></script>
     <script type="text/javascript" charset="UTF-8" src="portfolio.js"></script>
   </body>
