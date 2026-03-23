@@ -10,15 +10,18 @@ const parse = data => {
 
     // Nouveau : supporte le data-vue3 de Dealabs (JSON encodé dans l'attribut)
     const dataVue3 = $(element).find('div.js-vue3').attr('data-vue3');
+    let vue3Data = null;
     if (dataVue3) {
       try {
-        const vue3Data = JSON.parse(dataVue3);
-        if (!title) {
-          title = vue3Data?.thread?.title || vue3Data?.title || '';
-        }
+        vue3Data = JSON.parse(dataVue3);
       } catch (err) {
-        // Ignore parsing errors, on garde les fallback existants
+        vue3Data = null;
       }
+    }
+
+    const threadData = vue3Data?.props?.thread || vue3Data?.thread || {};
+    if (!title) {
+      title = threadData.title || vue3Data?.title || '';
     }
 
     if (title) {
@@ -28,13 +31,8 @@ const parse = data => {
                   $(element).find('.thread-price').text().trim();
 
       // Nouveau : extraire prix/lien depuis data-vue3 si détecté
-      if (!price && dataVue3) {
-        try {
-          const vue3Data = JSON.parse(dataVue3);
-          price = price || vue3Data?.thread?.price || vue3Data?.price || vue3Data?.thread?.priceText || '';
-        } catch (err) {
-          // ignore
-        }
+      if (vue3Data) {
+        price = price || threadData.price || vue3Data.price || threadData.priceText || '';
       }
 
       // Si toujours rien, on cherche n'importe quel élément qui contient "€"
@@ -49,15 +47,19 @@ const parse = data => {
         });
       }
 
-      let link = titleElement.attr('href');
-      if (!link && dataVue3) {
-        try {
-          const vue3Data = JSON.parse(dataVue3);
-          link = vue3Data?.thread?.url || vue3Data?.url || vue3Data?.thread?.link || '';
-        } catch (err) {
-          // ignore
-        }
+      let link = titleElement.attr('href') || '';
+      if (!link && vue3Data) {
+        link = threadData.url || vue3Data.url || threadData.link || '';
       }
+
+      const resolvedLink = link ? (link.startsWith('http') ? link : `https://www.dealabs.com${link}`) : '';
+
+      const safePrice = price != null ? String(price).trim() : '';
+      deals.push({
+        title,
+        price: safePrice ? safePrice.replace(/\s+/g, ' ') : 'N.C',
+        link: resolvedLink
+      });
     }
   });
 
