@@ -6,13 +6,36 @@ const parse = data => {
 
   $('article').each((i, element) => {
     const titleElement = $(element).find('a[class*="thread-title"], a[data-test="thread-title"]');
-    const title = titleElement.text().trim();
-    
+    let title = titleElement.text().trim();
+
+    // Nouveau : supporte le data-vue3 de Dealabs (JSON encodé dans l'attribut)
+    const dataVue3 = $(element).find('div.js-vue3').attr('data-vue3');
+    if (dataVue3) {
+      try {
+        const vue3Data = JSON.parse(dataVue3);
+        if (!title) {
+          title = vue3Data?.thread?.title || vue3Data?.title || '';
+        }
+      } catch (err) {
+        // Ignore parsing errors, on garde les fallback existants
+      }
+    }
+
     if (title) {
       // STRATÉGIE MULTI-CIBLES POUR LE PRIX :
       let price = $(element).find('[data-test="thread-price"]').text().trim() || 
                   $(element).find('span[class*="thread-price"]').text().trim() ||
                   $(element).find('.thread-price').text().trim();
+
+      // Nouveau : extraire prix/lien depuis data-vue3 si détecté
+      if (!price && dataVue3) {
+        try {
+          const vue3Data = JSON.parse(dataVue3);
+          price = price || vue3Data?.thread?.price || vue3Data?.price || vue3Data?.thread?.priceText || '';
+        } catch (err) {
+          // ignore
+        }
+      }
 
       // Si toujours rien, on cherche n'importe quel élément qui contient "€"
       if (!price) {
@@ -26,13 +49,15 @@ const parse = data => {
         });
       }
 
-      const link = titleElement.attr('href');
-
-      deals.push({
-        title,
-        price: price.replace(/\s+/g, ' ') || "N.C",
-        link: link ? (link.startsWith('http') ? link : `https://www.dealabs.com${link}`) : ''
-      });
+      let link = titleElement.attr('href');
+      if (!link && dataVue3) {
+        try {
+          const vue3Data = JSON.parse(dataVue3);
+          link = vue3Data?.thread?.url || vue3Data?.url || vue3Data?.thread?.link || '';
+        } catch (err) {
+          // ignore
+        }
+      }
     }
   });
 
