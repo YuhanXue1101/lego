@@ -32,8 +32,7 @@ let favorites = new Set(JSON.parse(localStorage.getItem('favoriteDeals') || '[]'
 const selectShow = document.querySelector('#show-select');
 const selectPage = document.querySelector('#page-select');
 const selectLegoSetIds = document.querySelector('#lego-set-id-select');
-const sectionDeals = document.querySelector('#deals');
-const sectionVintedSales = document.querySelector('#vinted-sales');
+const dealsList = document.querySelector('#deals-list');
 const vintedSalesList = document.querySelector('#vinted-sales-list');
 const spanNbDeals = document.querySelector('#nbDeals');
 const spanNbSales = document.querySelector('#nbSales');
@@ -95,38 +94,49 @@ const fetchDeals = async (page = 1, size = 6, filter = null) => {
  * @param  {Array} deals
  */
 const renderDeals = deals => {
-  const fragment = document.createDocumentFragment();
-  const div = document.createElement('div');
-  const template = deals
-    .map(deal => {
-      const isFavorite = favorites.has(deal.uuid);
-      return `
-      <div class="deal" id="deal-${deal.uuid}">
-        <span>${deal.id}</span>
-        <a href="${deal.link}" target="_blank" rel="noopener noreferrer">${deal.title}</a>
-        <span>${deal.price}</span>
-        <button class="favorite-btn" data-uuid="${deal.uuid}">${isFavorite ? '★' : '☆'}</button>
-      </div>
-    `;
-    })
-    .join('');
+  if (!deals || deals.length === 0) {
+    dealsList.innerHTML = '<li class="empty-message">No deals found</li>';
+    return;
+  }
 
-  div.innerHTML = template;
-  fragment.appendChild(div);
-  sectionDeals.innerHTML = '<h2>Deals</h2>';
-  sectionDeals.appendChild(fragment);
-
-  sectionDeals.querySelectorAll('.favorite-btn').forEach(button => {
-    button.addEventListener('click', () => {
-      const uuid = button.getAttribute('data-uuid');
-      if (favorites.has(uuid)) {
-        favorites.delete(uuid);
+  dealsList.innerHTML = '';
+  deals.forEach(deal => {
+    const isFavorite = favorites.has(deal.uuid);
+    const li = document.createElement('li');
+    li.className = 'item';
+    li.id = `deal-${deal.uuid}`;
+    
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'item-title';
+    titleDiv.innerHTML = `<a href="${deal.link}" target="_blank" rel="noopener noreferrer">${deal.title}</a>`;
+    
+    const priceDiv = document.createElement('div');
+    priceDiv.className = 'item-price';
+    
+    const button = document.createElement('button');
+    button.className = 'favorite-btn';
+    button.setAttribute('data-uuid', deal.uuid);
+    button.textContent = isFavorite ? '★' : '☆';
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (favorites.has(deal.uuid)) {
+        favorites.delete(deal.uuid);
       } else {
-        favorites.add(uuid);
+        favorites.add(deal.uuid);
       }
       localStorage.setItem('favoriteDeals', JSON.stringify([...favorites]));
       renderDeals(currentDeals);
     });
+    
+    priceDiv.appendChild(button);
+    const priceSpan = document.createElement('span');
+    priceSpan.style.marginRight = '0.5rem';
+    priceSpan.textContent = deal.price;
+    priceDiv.insertBefore(priceSpan, button);
+    
+    li.appendChild(titleDiv);
+    li.appendChild(priceDiv);
+    dealsList.appendChild(li);
   });
 };
 
@@ -151,6 +161,7 @@ const renderPagination = pagination => {
  */
 const updateFilterButtons = (activeFilter) => {
   filterBtns.forEach(btn => {
+    btn.classList.remove('active');
     const shouldActive =
       (activeFilter === 'discount' && btn.id === 'filter-discount') ||
       (activeFilter === 'commented' && btn.id === 'filter-commented') ||
@@ -158,11 +169,7 @@ const updateFilterButtons = (activeFilter) => {
       (activeFilter === 'favorite' && btn.id === 'filter-favorite');
 
     if (shouldActive) {
-      btn.style.fontWeight = 'bold';
-      btn.style.textDecoration = 'underline';
-    } else {
-      btn.style.fontWeight = 'normal';
-      btn.style.textDecoration = 'none';
+      btn.classList.add('active');
     }
   });
 };
@@ -254,9 +261,9 @@ const setVintedSalesIndicators = sales => {
     return arr[idx];
   };
 
-  spanP5.innerHTML = percentile(prices, 0.05).toFixed(2);
-  spanP25.innerHTML = percentile(prices, 0.25).toFixed(2);
-  spanP50.innerHTML = percentile(prices, 0.5).toFixed(2);
+  spanP5.innerHTML = `€${percentile(prices, 0.05).toFixed(2)}`;
+  spanP25.innerHTML = `€${percentile(prices, 0.25).toFixed(2)}`;
+  spanP50.innerHTML = `€${percentile(prices, 0.5).toFixed(2)}`;
 
   const dateStrings = sales.map(item => item.published || item.created || item.publication_date);
   const dates = dateStrings
@@ -298,16 +305,27 @@ const getSalePrice = (item) => {
 const renderVintedSales = sales => {
   vintedSalesList.innerHTML = '';
   if (!Array.isArray(sales) || !sales.length) {
-    vintedSalesList.innerHTML = '<li>No sales found for this set</li>';
+    vintedSalesList.innerHTML = '<li class="empty-message">No sales found for this set</li>';
     setVintedSalesIndicators([]);
     return;
   }
 
   sales.forEach(item => {
     const li = document.createElement('li');
+    li.className = 'item';
     const price = getSalePrice(item).toFixed(2);
     const link = item.link || item.url || '#';
-    li.innerHTML = `<a href="${link}" target="_blank" rel="noopener noreferrer">${item.title || 'sold item'} - ${price}</a>`;
+    
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'item-title';
+    titleDiv.innerHTML = `<a href="${link}" target="_blank" rel="noopener noreferrer">${item.title || 'sold item'}</a>`;
+    
+    const priceDiv = document.createElement('div');
+    priceDiv.className = 'item-price';
+    priceDiv.textContent = `€${price}`;
+    
+    li.appendChild(titleDiv);
+    li.appendChild(priceDiv);
     vintedSalesList.appendChild(li);
   });
 
