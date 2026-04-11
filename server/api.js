@@ -30,11 +30,31 @@ app.get('/sales/search', (request, response) => {
 
   try {
     const { legoSetId } = request.query;
-    const result = SALES[legoSetId] || []
+    
+    let result = [];
+    if (legoSetId) {
+      result = SALES[legoSetId] || [];
+    } else {
+      Object.entries(SALES).forEach(([setId, items]) => {
+        if (Array.isArray(items)) {
+          result = result.concat(items.map(item => ({
+            ...item,
+            id: setId,
+            source: 'vinted'
+          })));
+        }
+      });
+    }
+
+    const formattedResult = result.map(item => ({
+      ...item,
+      id: item.id || legoSetId,
+      source: item.source || 'vinted'
+    }));
 
     return response.status(200).json({
       'success': true,
-      'data': {'result': result}
+      'data': {'result': formattedResult}
     });
   } catch (error) {
     console.log(error);

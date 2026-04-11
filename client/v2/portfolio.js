@@ -23,29 +23,36 @@ This endpoint accepts the following optional query string parameters:
 
 // current deals on the page
 let currentDeals = [];
+let currentVintedSales = [];
+let combinedItems = [];
 let sourceDeals = [];
 let currentPagination = {};
 let currentFilter = null;
+let currentSource = 'all';
+let currentDiscount = 'any';
+let currentLegoSetId = '';
+let currentPage = 1;
 let favorites = new Set(JSON.parse(localStorage.getItem('favoriteDeals') || '[]'));
 
 // instantiate the selectors
 const selectShow = document.querySelector('#show-select');
 const selectPage = document.querySelector('#page-select');
 const selectLegoSetIds = document.querySelector('#lego-set-id-select');
-const dealsList = document.querySelector('#deals-list');
-const vintedSalesList = document.querySelector('#vinted-sales-list');
+const marketplaceList = document.querySelector('#marketplace-list');
 const spanNbDeals = document.querySelector('#nbDeals');
 const spanNbSales = document.querySelector('#nbSales');
 const spanP5 = document.querySelector('#p5Price');
 const spanP25 = document.querySelector('#p25Price');
 const spanP50 = document.querySelector('#p50Price');
+const spanAverage = document.querySelector('#avgPrice');
 const spanLifetime = document.querySelector('#lifetimeDays');
-const filterBtnDiscount = document.querySelector('#filter-discount');
 const filterBtnCommented = document.querySelector('#filter-commented');
 const filterBtnHot = document.querySelector('#filter-hot');
 const filterBtnFavorite = document.querySelector('#filter-favorite');
 const filterBtns = document.querySelectorAll('.filter-btn');
 const selectSort = document.querySelector('#sort-select');
+const selectSource = document.querySelector('#source-select');
+const selectDiscount = document.querySelector('#discount-select');
 
 /**
  * Set global value
@@ -55,8 +62,19 @@ const selectSort = document.querySelector('#sort-select');
 const setCurrentDeals = ({result, meta}) => {
   sourceDeals = Array.isArray(result) ? result : [];
   currentPagination = meta || {};
-  currentDeals = filterDeals(sourceDeals, currentFilter);
-  currentDeals = sortDealsLocal(currentDeals, selectSort.value);
+  currentDeals = sourceDeals.map(deal => ({...deal, source: 'dealabs'}));
+  rebuildCombinedAndRender();
+};
+
+/**
+ * Combine deals and vinted sales, apply filters and sorting
+ */
+const rebuildCombinedAndRender = () => {
+  combinedItems = [...currentDeals, ...currentVintedSales];
+  combinedItems = filterDeals(combinedItems);
+  combinedItems = sortDealsLocal(combinedItems, selectSort.value);
+  currentPage = 1;
+  render(combinedItems, currentPagination);
 };
 
 /**
@@ -90,53 +108,102 @@ const fetchDeals = async (page = 1, size = 6, filter = null) => {
 };
 
 /**
- * Render list of deals
- * @param  {Array} deals
+ * Render combined marketplace items with images, badges and favorites
+ * @param  {Array} items - Combined deals and Vinted sales
  */
-const renderDeals = deals => {
-  if (!deals || deals.length === 0) {
-    dealsList.innerHTML = '<li class="empty-message">No deals found</li>';
+const renderMarketplace = items => {
+  if (!items || items.length === 0) {
+    marketplaceList.innerHTML = '<li class="empty-message">No items found</li>';
     return;
   }
 
-  dealsList.innerHTML = '';
-  deals.forEach(deal => {
-    const isFavorite = favorites.has(deal.uuid);
-    const li = document.createElement('li');
-    li.className = 'item';
-    li.id = `deal-${deal.uuid}`;
-    
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'item-title';
-    titleDiv.innerHTML = `<a href="${deal.link}" target="_blank" rel="noopener noreferrer">${deal.title}</a>`;
-    
-    const priceDiv = document.createElement('div');
-    priceDiv.className = 'item-price';
-    
-    const button = document.createElement('button');
-    button.className = 'favorite-btn';
-    button.setAttribute('data-uuid', deal.uuid);
-    button.textContent = isFavorite ? '★' : '☆';
-    button.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (favorites.has(deal.uuid)) {
-        favorites.delete(deal.uuid);
-      } else {
-        favorites.add(deal.uuid);
+  marketplaceList.innerHTML = '';
+  items.forEach(item => {
+    try {
+      const isFavorite = favorites.has(item.uuid);
+      const li = document.createElement('li');
+      li.className = 'item';
+      li.id = `item-${item.uuid}`;
+      
+      const imageDiv = document.createElement('div');
+      const img = document.createElement('img');
+      img.className = 'item-image';
+      
+      let imageUrl = null;
+      
+      if (item && item.photo && typeof item.photo === 'string' && item.photo.trim() !== '' && item.photo.startsWith('http')) {
+        imageUrl = item.photo;
+      } else if (item && item.image && typeof item.image === 'string' && item.image.trim() !== '' && item.image.startsWith('http')) {
+        imageUrl = item.image;
+      } else if (item && item.picture && typeof item.picture === 'string' && item.picture.trim() !== '' && item.picture.startsWith('http')) {
+        imageUrl = item.picture;
+      } else if (item && item.img && typeof item.img === 'string' && item.img.trim() !== '' && item.img.startsWith('http')) {
+        imageUrl = item.img;
       }
-      localStorage.setItem('favoriteDeals', JSON.stringify([...favorites]));
-      renderDeals(currentDeals);
-    });
-    
-    priceDiv.appendChild(button);
-    const priceSpan = document.createElement('span');
-    priceSpan.style.marginRight = '0.5rem';
-    priceSpan.textContent = deal.price;
-    priceDiv.insertBefore(priceSpan, button);
-    
-    li.appendChild(titleDiv);
-    li.appendChild(priceDiv);
-    dealsList.appendChild(li);
+      
+      img.src = imageUrl || 'https://placehold.co/80x80/9ca3af/ffffff?text=No+Image';
+      img.onerror = () => {
+        img.src = 'https://placehold.co/80x80/9ca3af/ffffff?text=No+Image';
+      };
+      imageDiv.appendChild(img);
+      
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'item-content';
+      
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'item-title';
+      const link = (item && (item.link || item.url)) || '#';
+      
+      const isVinted = link && typeof link === 'string' && link.includes('vinted.fr');
+      const sourceBadge = document.createElement('span');
+      sourceBadge.className = 'source-badge';
+      sourceBadge.textContent = isVinted ? 'Vinted' : 'Dealabs';
+      sourceBadge.style.marginRight = '0.5rem';
+      sourceBadge.style.padding = '0.25rem 0.5rem';
+      sourceBadge.style.borderRadius = '4px';
+      sourceBadge.style.fontSize = '0.75rem';
+      sourceBadge.style.fontWeight = '600';
+      sourceBadge.style.color = 'white';
+      sourceBadge.style.backgroundColor = isVinted ? '#3b82f6' : '#ef4444';
+      
+      const itemTitle = (item && item.title) || 'Untitled';
+      titleDiv.innerHTML = `<a href="${link}" target="_blank" rel="noopener noreferrer">${itemTitle}</a>`;
+      titleDiv.insertBefore(sourceBadge, titleDiv.firstChild);
+      
+      contentDiv.appendChild(titleDiv);
+      
+      const priceDiv = document.createElement('div');
+      priceDiv.className = 'item-price';
+      
+      const button = document.createElement('button');
+      button.className = 'favorite-btn';
+      button.setAttribute('data-uuid', item.uuid || '');
+      button.textContent = isFavorite ? '★' : '☆';
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (favorites.has(item.uuid)) {
+          favorites.delete(item.uuid);
+        } else {
+          favorites.add(item.uuid);
+        }
+        localStorage.setItem('favoriteDeals', JSON.stringify([...favorites]));
+        renderMarketplace(combinedItems);
+      });
+      
+      priceDiv.appendChild(button);
+      
+      const priceSpan = document.createElement('span');
+      priceSpan.style.marginRight = '0.5rem';
+      priceSpan.textContent = formatPrice(item);
+      priceDiv.insertBefore(priceSpan, button);
+      
+      li.appendChild(imageDiv);
+      li.appendChild(contentDiv);
+      li.appendChild(priceDiv);
+      marketplaceList.appendChild(li);
+    } catch (e) {
+      console.error('Erreur sur un item:', e, item);
+    }
   });
 };
 
@@ -144,15 +211,16 @@ const renderDeals = deals => {
  * Render page selector
  * @param  {Object} pagination
  */
-const renderPagination = pagination => {
-  const {currentPage, pageCount} = pagination;
+const renderPagination = (pagination, totalItems) => {
+  const pageSize = parseInt(selectShow.value) || 6;
+  const calculatedPageCount = Math.ceil(totalItems / pageSize) || 1;
   const options = Array.from(
-    {'length': pageCount},
+    {'length': calculatedPageCount},
     (value, index) => `<option value="${index + 1}">${index + 1}</option>`
   ).join('');
 
   selectPage.innerHTML = options;
-  selectPage.selectedIndex = currentPage - 1;
+  selectPage.selectedIndex = Math.min(currentPage - 1, calculatedPageCount - 1);
 };
 
 /**
@@ -163,7 +231,6 @@ const updateFilterButtons = (activeFilter) => {
   filterBtns.forEach(btn => {
     btn.classList.remove('active');
     const shouldActive =
-      (activeFilter === 'discount' && btn.id === 'filter-discount') ||
       (activeFilter === 'commented' && btn.id === 'filter-commented') ||
       (activeFilter === 'hot' && btn.id === 'filter-hot') ||
       (activeFilter === 'favorite' && btn.id === 'filter-favorite');
@@ -178,66 +245,110 @@ const updateFilterButtons = (activeFilter) => {
  * Render lego set ids selector
  * @param  {Array} lego set ids
  */
+/**
+ * Render lego set ids selector with All sets option
+ * @param  {Array} deals - list of deals
+ */
 const renderLegoSetIds = deals => {
   const ids = getIdsFromDeals(deals);
-  const options = ids.map(id => 
-    `<option value="${id}">${id}</option>`
+  const currentValue = selectLegoSetIds.value;
+  
+  const options = ['<option value="">All sets</option>'].concat(
+    ids.map(id => `<option value="${id}">${id}</option>`)
   ).join('');
 
   selectLegoSetIds.innerHTML = options;
-};
-
-/**
- * Render page selector
- * @param  {Object} pagination
- */
-const filterDeals = deals => {
-  if (!currentFilter || currentFilter === 'none') {
-    return [...deals];
+  
+  if (currentValue) {
+    selectLegoSetIds.value = currentValue;
   }
-
-  return deals.filter(deal => {
-    if (currentFilter === 'discount') {
-      return Number(deal.discount) > 50;
-    }
-    if (currentFilter === 'commented') {
-      return Number(deal.comments) > 15;
-    }
-    if (currentFilter === 'hot') {
-      return Number(deal.temperature) > 100;
-    }
-    if (currentFilter === 'favorite') {
-      return favorites.has(deal.uuid);
-    }
-    return true;
-  });
 };
 
-const renderIndicators = pagination => {
-  const {count} = pagination;
-
-  spanNbDeals.innerHTML = Number.isFinite(count) ? count : (currentDeals.length || 0);
+const filterDeals = items => {
+  let filtered = [...items];
+  
+  if (currentSource !== 'all') {
+    filtered = filtered.filter(item => item.source === currentSource);
+  }
+  
+  if (currentLegoSetId) {
+    filtered = filtered.filter(item => {
+      if (item.source === 'vinted') return true;
+      return String(item.id || item.setId || '') === String(currentLegoSetId);
+    });
+  }
+  
+  if (currentDiscount !== 'any') {
+    const minDiscount = parseInt(currentDiscount);
+    filtered = filtered.filter(item => {
+      if (item.source === 'vinted') {
+        return true;
+      }
+      return Number(item.discount || 0) >= minDiscount;
+    });
+  }
+  
+  if (currentFilter === 'commented') {
+    filtered = filtered.filter(item => {
+      if (item.source === 'dealabs') {
+        const comments = item.comments;
+        return comments !== undefined && comments !== null && Number(comments) > 15;
+      }
+      return false;
+    });
+  }
+  if (currentFilter === 'hot') {
+    filtered = filtered.filter(item => {
+      if (item.source !== 'dealabs') return false;
+      return Number(item.temperature || 0) > 100;
+    });
+  }
+  if (currentFilter === 'favorite') {
+    filtered = filtered.filter(item => {
+      return favorites.has(item.uuid);
+    });
+  }
+  
+  return filtered;
 };
 
-const render = (deals, pagination) => {
-  renderDeals(deals);
-  renderPagination(pagination);
-  renderIndicators(pagination);
-  renderLegoSetIds(deals);
+const renderIndicators = (items) => {
+  const dealsCount = items.filter(item => item.source === 'dealabs').length;
+  spanNbDeals.innerHTML = dealsCount;
+};
+
+const render = (items, pagination) => {
+  const pageSize = parseInt(selectShow.value) || 6;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedItems = items.slice(startIndex, endIndex);
+  
+  renderMarketplace(paginatedItems);
+  renderPagination(pagination, items.length);
+  renderLegoSetIds(combinedItems);
+  updateIndicators(items);
 };
 
 /**
- * Helpers: sort deals in browser
+ * Sort items in browser
  */
-const sortDealsLocal = (deals, sortValue) => {
-  const sorted = [...deals];
-  console.log('Sorting', sorted.length, 'deals by', sortValue);
+const sortDealsLocal = (items, sortValue) => {
+  const sorted = [...items];
+  console.log('Sorting', sorted.length, 'items by', sortValue);
 
   switch (sortValue) {
     case 'price-asc':
-      return sorted.sort((a, b) => (a.price || 0) - (b.price || 0));
+      return sorted.sort((a, b) => {
+        const priceA = a.source === 'dealabs' ? (getSalePrice(a) || 0) : (getSalePrice(a) || 0);
+        const priceB = b.source === 'dealabs' ? (getSalePrice(b) || 0) : (getSalePrice(b) || 0);
+        return priceA - priceB;
+      });
     case 'price-desc':
-      return sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
+      return sorted.sort((a, b) => {
+        const priceA = a.source === 'dealabs' ? (getSalePrice(a) || 0) : (getSalePrice(a) || 0);
+        const priceB = b.source === 'dealabs' ? (getSalePrice(b) || 0) : (getSalePrice(b) || 0);
+        return priceB - priceA;
+      });
     case 'date-asc':
       return sorted.sort((a, b) => new Date(b.published || 0) - new Date(a.published || 0));
     case 'date-desc':
@@ -261,9 +372,16 @@ const setVintedSalesIndicators = sales => {
     return arr[idx];
   };
 
+  const calculateAverage = (arr) => {
+    if (!arr.length) return 0;
+    const sum = arr.reduce((acc, val) => acc + val, 0);
+    return sum / arr.length;
+  };
+
   spanP5.innerHTML = `€${percentile(prices, 0.05).toFixed(2)}`;
   spanP25.innerHTML = `€${percentile(prices, 0.25).toFixed(2)}`;
   spanP50.innerHTML = `€${percentile(prices, 0.5).toFixed(2)}`;
+  spanAverage.innerHTML = `€${calculateAverage(prices).toFixed(2)}`;
 
   const dateStrings = sales.map(item => item.published || item.created || item.publication_date);
   const dates = dateStrings
@@ -279,83 +397,158 @@ const setVintedSalesIndicators = sales => {
   }
 };
 
+const updateIndicators = (currentData) => {
+  if (!Array.isArray(currentData) || currentData.length === 0) {
+    spanNbDeals.innerHTML = '0';
+    spanNbSales.innerHTML = '0';
+    spanP5.innerHTML = 'N/A';
+    spanP25.innerHTML = 'N/A';
+    spanP50.innerHTML = 'N/A';
+    spanAverage.innerHTML = 'N/A';
+    spanLifetime.innerHTML = 'N/A';
+    return;
+  }
+
+  const dealsItems = currentData.filter(item => item.source === 'dealabs');
+  const vintedItems = currentData.filter(item => item.source === 'vinted');
+
+  spanNbDeals.innerHTML = dealsItems.length;
+  spanNbSales.innerHTML = vintedItems.length;
+
+  if (!vintedItems.length) {
+    spanP5.innerHTML = 'N/A';
+    spanP25.innerHTML = 'N/A';
+    spanP50.innerHTML = 'N/A';
+    spanAverage.innerHTML = 'N/A';
+    spanLifetime.innerHTML = 'N/A';
+    return;
+  }
+
+  const prices = vintedItems
+    .map(item => getSalePrice(item))
+    .filter(priceValue => priceValue !== null && Number.isFinite(priceValue))
+    .sort((a, b) => a - b);
+
+  const percentile = (arr, p) => {
+    if (!arr.length) return null;
+    const idx = Math.floor((arr.length - 1) * p);
+    return arr[idx];
+  };
+
+  const calculateAverage = (arr) => {
+    if (!arr.length) return null;
+    const sum = arr.reduce((acc, val) => acc + val, 0);
+    return sum / arr.length;
+  };
+
+  const p5 = percentile(prices, 0.05);
+  const p25 = percentile(prices, 0.25);
+  const p50 = percentile(prices, 0.5);
+  const avg = calculateAverage(prices);
+
+  spanP5.innerHTML = p5 !== null ? `€${p5.toFixed(2)}` : 'N/A';
+  spanP25.innerHTML = p25 !== null ? `€${p25.toFixed(2)}` : 'N/A';
+  spanP50.innerHTML = p50 !== null ? `€${p50.toFixed(2)}` : 'N/A';
+  spanAverage.innerHTML = avg !== null ? `€${avg.toFixed(2)}` : 'N/A';
+
+  const dateStrings = vintedItems.map(item => item.published || item.created || item.publication_date);
+  const dates = dateStrings
+    .map(d => {
+      const parsed = new Date(d);
+      return !Number.isNaN(parsed.getTime()) ? parsed : null;
+    })
+    .filter(d => d !== null);
+
+  if (dates.length >= 2) {
+    const newest = dates.reduce((a, b) => a > b ? a : b);
+    const oldest = dates.reduce((a, b) => a < b ? a : b);
+    const lifetimeDays = Math.floor((newest.getTime() - oldest.getTime()) / (1000 * 60 * 60 * 24));
+    spanLifetime.innerHTML = `${lifetimeDays} days`;
+  } else if (dates.length === 1) {
+    spanLifetime.innerHTML = '0 days';
+  } else {
+    spanLifetime.innerHTML = 'N/A';
+  }
+};
+
 const getSalePrice = (item) => {
-  if (!item) return 0;
+  if (!item) return null;
 
   if (typeof item.price === 'number') return item.price;
   if (typeof item.price === 'string') {
     const normalized = item.price.replace(',', '.').replace(/[€\s]/g, '');
     const parsed = parseFloat(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : null;
   }
   if (item.price && typeof item.price === 'object' && item.price.amount) {
     const normalized = String(item.price.amount).replace(',', '.');
     const parsed = parseFloat(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : null;
   }
   if (item.amount) {
     const normalized = String(item.amount).replace(',', '.');
     const parsed = parseFloat(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
-  return 0;
+  return null;
+};
+
+const formatPrice = (item) => {
+  const price = getSalePrice(item);
+  if (price === null || price === undefined) {
+    return 'N/A';
+  }
+  return '€' + Number(price).toFixed(2);
 };
 
 const renderVintedSales = sales => {
-  vintedSalesList.innerHTML = '';
   if (!Array.isArray(sales) || !sales.length) {
-    vintedSalesList.innerHTML = '<li class="empty-message">No sales found for this set</li>';
+    currentVintedSales = [];
     setVintedSalesIndicators([]);
+    rebuildCombinedAndRender();
     return;
   }
 
-  sales.forEach(item => {
-    const li = document.createElement('li');
-    li.className = 'item';
-    const price = getSalePrice(item).toFixed(2);
-    const link = item.link || item.url || '#';
-    
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'item-title';
-    titleDiv.innerHTML = `<a href="${link}" target="_blank" rel="noopener noreferrer">${item.title || 'sold item'}</a>`;
-    
-    const priceDiv = document.createElement('div');
-    priceDiv.className = 'item-price';
-    priceDiv.textContent = `€${price}`;
-    
-    li.appendChild(titleDiv);
-    li.appendChild(priceDiv);
-    vintedSalesList.appendChild(li);
-  });
-
+  currentVintedSales = sales.map(item => ({...item, source: 'vinted'}));
   setVintedSalesIndicators(sales);
+  rebuildCombinedAndRender();
 };
-
 const fetchVintedSales = async legoId => {
   try {
-    let url = `https://lego-api-blue.vercel.app/sales?id=${legoId}`;
-    let response = await fetch(url);
-    let body = await response.json();
-
-    if (!body || !body.success || !body.data) {
-      url = `http://localhost:8092/sales/search?legoSetId=${legoId}`;
-      response = await fetch(url);
-      body = await response.json();
+    let url = `http://localhost:8092/sales/search`;
+    
+    if (legoId) {
+      url += `?legoSetId=${legoId}`;
     }
 
-    const sales = body?.data?.result || [];
+    console.log("URL appelee :", url);
+
+    const response = await fetch(url);
+    const body = await response.json();
+
+    console.log("Body brut recu :", body);
+
+    let sales = body?.data?.result || body?.data || body || [];
+    
+    if (sales && !Array.isArray(sales)) {
+      console.log("Sales est un objet, aplatissement en cours...");
+      sales = Object.values(sales).flat();
+    }
+    
+    console.log("Tableau sales final (avant rendu) :", sales);
+    
     renderVintedSales(sales);
+
   } catch (error) {
-    console.error(error);
+    console.error("Erreur lors de la recuperation des ventes :", error);
     renderVintedSales([]);
   }
 };
 
-const applyCurrentSort = async () => {
-  const sortValue = document.querySelector('#sort-select').value;
-  currentDeals = sortDealsLocal(currentDeals, sortValue);
-  render(currentDeals, currentPagination);
+const applyCurrentSort = () => {
+  const sortValue = selectSort.value;
+  rebuildCombinedAndRender();
 };
 
 /**
@@ -363,63 +556,69 @@ const applyCurrentSort = async () => {
  */
 
 /**
- * Filter buttons
+ * Filter buttons with toggle functionality
  */
-const onFilterClick = async (filterName) => {
-  currentFilter = filterName;
+const onFilterClick = (filterName) => {
+  if (currentFilter === filterName) {
+    currentFilter = null;
+  } else {
+    currentFilter = filterName;
+  }
   updateFilterButtons(currentFilter);
-  const pageSize = parseInt(selectShow.value);
-  const deals = await fetchDeals(1, pageSize); // fetch raw page and apply local filter
-  setCurrentDeals(deals);
-  render(currentDeals, currentPagination);
+  rebuildCombinedAndRender();
 };
 
-filterBtnDiscount.addEventListener('click', () => onFilterClick('discount'));
 filterBtnCommented.addEventListener('click', () => onFilterClick('commented'));
 filterBtnHot.addEventListener('click', () => onFilterClick('hot'));
 filterBtnFavorite.addEventListener('click', () => onFilterClick('favorite'));
 
+/**
+ * Source and discount filters
+ */
+selectSource.addEventListener('change', (event) => {
+  currentSource = event.target.value;
+  rebuildCombinedAndRender();
+});
+
+selectDiscount.addEventListener('change', (event) => {
+  currentDiscount = event.target.value;
+  rebuildCombinedAndRender();
+});
 
 /**
  * Select the number of deals to display
  */
-selectShow.addEventListener('change', async (event) => {
-  const deals = await fetchDeals(currentPagination.currentPage, parseInt(event.target.value));
-
-  setCurrentDeals(deals);
-  render(currentDeals, currentPagination);
+selectShow.addEventListener('change', (event) => {
+  currentPage = 1;
+  render(combinedItems, currentPagination);
 });
 
 /**
  * Select a specific page to browse
  */
-selectPage.addEventListener('change', async (event) => {
-  const pageSize = parseInt(selectShow.value);
-  const deals = await fetchDeals(parseInt(event.target.value), pageSize);
-
-  setCurrentDeals(deals);
-  render(currentDeals, currentPagination);
+selectPage.addEventListener('change', (event) => {
+  currentPage = parseInt(event.target.value);
+  render(combinedItems, currentPagination);
 });
 
 selectLegoSetIds.addEventListener('change', async event => {
   const legoId = event.target.value;
-  if (!legoId) {
-    renderVintedSales([]);
-    return;
-  }
+  currentLegoSetId = legoId;
+  
   await fetchVintedSales(legoId);
+  rebuildCombinedAndRender();
 });
 
-selectSort.addEventListener('change', async () => {  console.log('Sort select changed to:', event.target.value);  await applyCurrentSort();
+selectSort.addEventListener('change', (event) => {
+  console.log('Sort select changed to:', event.target.value);
+  applyCurrentSort();
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
   const deals = await fetchDeals(1, parseInt(selectShow.value));
   setCurrentDeals(deals);
   updateFilterButtons(currentFilter);
-  render(currentDeals, currentPagination);
-
-  if (selectLegoSetIds.value) {
-    await fetchVintedSales(selectLegoSetIds.value);
-  }
+  
+  await fetchVintedSales('');
+  rebuildCombinedAndRender();
 });
