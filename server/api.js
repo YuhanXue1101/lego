@@ -217,3 +217,6 @@ app.get('/sales/search', (request, response) => {
 app.listen(PORT, () => {
   console.log(`📡 Running on port ${PORT}`);
 });
+
+// Indispensable pour que Vercel puisse "attraper" ton application Express
+export default app;

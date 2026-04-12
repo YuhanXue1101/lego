@@ -2,7 +2,7 @@
 'use strict';
 
 // API Configuration
-const API_BASE_URL = 'http://localhost:8092';
+const API_BASE_URL = 'https://server-zeta-seven-32.vercel.app';
 
 /**
 Description of the available api
@@ -585,27 +585,25 @@ const renderVintedSales = sales => {
 
 const fetchVintedSales = async legoId => {
   try {
-    // MODIFICATION : Demander une grosse limite a l'API Vinted aussi
-    let url = `http://localhost:8092/sales/search?limit=1000`;
+    // ON UTILISE ENFIN LA VARIABLE API_BASE_URL ICI !
+    let url = `${API_BASE_URL}/sales/search?limit=1000`;
     
     if (legoId) {
       url += `&legoSetId=${legoId}`;
     }
 
-    console.log("URL appelee :", url);
+    console.log("Appel API Vinted vers :", url);
 
     const response = await fetch(url);
     const body = await response.json();
 
-    // MODIFICATION : La nouvelle API renvoie les donnees dans "results"
+    // On récupère les résultats
     let sales = body.results || [];
-    
-    console.log("Tableau sales final (avant rendu) :", sales);
     
     renderVintedSales(sales);
 
   } catch (error) {
-    console.error("Erreur lors de la recuperation des ventes :", error);
+    console.error("Erreur lors de la récupération des ventes :", error);
     renderVintedSales([]);
   }
 };
