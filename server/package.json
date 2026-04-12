@@ -5,6 +5,11 @@
   "main": "index.js",
   "repository": "git@github.com:92bondstreet/lego.git",
   "type": "module",
+  "scripts": {
+    "start": "node api.js",
+    "dev": "nodemon api.js",
+    "scrape": "node sandbox.js"
+  },
   "dependencies": {
     "body-parser": "^2.2.2",
     "cheerio": "^1.0.0",

@@ -36,17 +36,37 @@ async function scrapeVinted (lego) {
 
 async function scrapeDealabs(website = 'https://www.dealabs.com/groupe/lego') {
   try {
-    console.log(` browsing Dealabs: ${website}`);
+    console.log(` browsing Dealabs with pagination: ${website}`);
 
-    const deals = await dealabs.scrape(website);
+    let allDeals = [];
+    const baseUrl = website.includes('?') ? website : website + '?';
+    
+    // Scrape multiple pages
+    for (let page = 1; page <= 5; page++) {
+      const pageUrl = `${baseUrl}${website.includes('?') ? '&' : '?'}page=${page}`;
+      console.log(`📄 Page ${page}: ${pageUrl}`);
+      
+      const pageDeals = await dealabs.scrape(pageUrl);
+      
+      if (!pageDeals || pageDeals.length === 0) {
+        console.log(`⚠️  Page ${page} returned no deals, stopping pagination`);
+        break;
+      }
+      
+      allDeals = allDeals.concat(pageDeals);
+      console.log(`  ✓ ${pageDeals.length} deals in page ${page} (total: ${allDeals.length})`);
+      
+      // Small delay between requests to be polite to the server
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
     // Étape de stockage : on transforme l'objet JS en chaîne JSON
-    const data = JSON.stringify(deals, null, 2);
+    const data = JSON.stringify(allDeals, null, 2);
     
     // On écrit le fichier à la racine du dossier server
     fs.writeFileSync('dealabs_deals.json', data);
 
-    console.log(`✅ ${deals.length} deals récupérés et sauvegardés dans dealabs_deals.json`);
+    console.log(`✅ ${allDeals.length} deals récupérés et sauvegardés dans dealabs_deals.json`);
     process.exit(0);
   } catch (e) {
     console.error(" Erreur lors du scraping de Dealabs :", e);
@@ -56,6 +76,6 @@ async function scrapeDealabs(website = 'https://www.dealabs.com/groupe/lego') {
 const [,, param] = process.argv;
 
 
-//scrapeDealabs(param); 
+scrapeDealabs(param); 
 // scrapeADLB(param);
-scrapeVinted(param);
+// scrapeVinted(param);

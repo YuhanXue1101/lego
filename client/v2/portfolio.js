@@ -1,6 +1,9 @@
 // Invoking strict mode https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Strict_mode#invoking_strict_mode
 'use strict';
 
+// API Configuration
+const API_BASE_URL = 'http://localhost:8092';
+
 /**
 Description of the available api
 GET https://lego-api-blue.vercel.app/deals
@@ -26,6 +29,7 @@ let currentDeals = [];
 let currentVintedSales = [];
 let combinedItems = [];
 let sourceDeals = [];
+let allAvailableIds = []; // Store all available IDs from all data
 let currentPagination = {};
 let currentFilter = null;
 let currentSource = 'all';
@@ -54,6 +58,12 @@ const selectSort = document.querySelector('#sort-select');
 const selectSource = document.querySelector('#source-select');
 const selectDiscount = document.querySelector('#discount-select');
 
+// Renomme pour eviter le conflit avec les autres scripts
+const extractUniqueIds = items => {
+  const ids = items.map(item => item.id || item.setId);
+  return ids.filter((id, index) => id && ids.indexOf(id) === index);
+};
+
 /**
  * Set global value
  * @param {Array} result - deals to display
@@ -63,6 +73,12 @@ const setCurrentDeals = ({result, meta}) => {
   sourceDeals = Array.isArray(result) ? result : [];
   currentPagination = meta || {};
   currentDeals = sourceDeals.map(deal => ({...deal, source: 'dealabs'}));
+  
+  // Update all available IDs
+  const dealsIds = extractUniqueIds(currentDeals);
+  const vintedIds = extractUniqueIds(currentVintedSales);
+  allAvailableIds = Array.from(new Set([...dealsIds, ...vintedIds])).sort();
+  
   rebuildCombinedAndRender();
 };
 
@@ -86,7 +102,7 @@ const rebuildCombinedAndRender = () => {
  */
 const fetchDeals = async (page = 1, size = 6, filter = null) => {
   try {
-    let url = `https://lego-api-blue.vercel.app/deals?page=${page}&size=${size}`;
+    let url = `${API_BASE_URL}/deals?page=${page}&size=${size}`;
     
     if (filter) {
       url += `&filter=${filter}`;
@@ -175,6 +191,28 @@ const renderMarketplace = items => {
       const priceDiv = document.createElement('div');
       priceDiv.className = 'item-price';
       
+      // Add metadata (temperature, commentCount) for Dealabs items
+      if (item.source === 'dealabs') {
+        const metaDiv = document.createElement('div');
+        metaDiv.style.fontSize = '0.85rem';
+        metaDiv.style.color = '#6b7280';
+        metaDiv.style.marginBottom = '0.5rem';
+        
+        const metaItems = [];
+        if (item.temperature !== undefined && item.temperature !== null) {
+          const temp = Number(item.temperature);
+          metaItems.push(` ${temp.toFixed(1)}C`);
+        }
+        if (item.commentCount !== undefined && item.commentCount !== null) {
+          metaItems.push(` ${item.commentCount}`);
+        }
+        
+        if (metaItems.length > 0) {
+          metaDiv.textContent = metaItems.join(' | ');
+          priceDiv.appendChild(metaDiv);
+        }
+      }
+      
       const button = document.createElement('button');
       button.className = 'favorite-btn';
       button.setAttribute('data-uuid', item.uuid || '');
@@ -242,16 +280,23 @@ const updateFilterButtons = (activeFilter) => {
 };
 
 /**
- * Render lego set ids selector
- * @param  {Array} lego set ids
- */
-/**
  * Render lego set ids selector with All sets option
+ * Filter IDs based on current source selection
  * @param  {Array} deals - list of deals
  */
 const renderLegoSetIds = deals => {
-  const ids = getIdsFromDeals(deals);
   const currentValue = selectLegoSetIds.value;
+  
+  // Get IDs based on current source
+  let ids = [];
+  
+  if (currentSource === 'dealabs') {
+    ids = extractUniqueIds(currentDeals);
+  } else if (currentSource === 'vinted') {
+    ids = extractUniqueIds(currentVintedSales);
+  } else {
+    ids = allAvailableIds.length > 0 ? allAvailableIds : extractUniqueIds(deals);
+  }
   
   const options = ['<option value="">All sets</option>'].concat(
     ids.map(id => `<option value="${id}">${id}</option>`)
@@ -273,36 +318,35 @@ const filterDeals = items => {
   
   if (currentLegoSetId) {
     filtered = filtered.filter(item => {
-      if (item.source === 'vinted') return true;
+      // Both Dealabs and Vinted must match the Set ID
       return String(item.id || item.setId || '') === String(currentLegoSetId);
     });
   }
+
+  // NOUVEAU : Suppression des annonces Dealabs sans prix valide
+  filtered = filtered.filter(item => {
+    if (item.source === 'dealabs') {
+      const price = getSalePrice(item);
+      // Si le prix est null, on retourne false pour exclure l'article
+      return price !== null;
+    }
+    // On laisse Vinted tranquille a cette etape
+    return true;
+  });
   
   if (currentDiscount !== 'any') {
     const minDiscount = parseInt(currentDiscount);
     filtered = filtered.filter(item => {
-      if (item.source === 'vinted') {
-        return true;
-      }
-      return Number(item.discount || 0) >= minDiscount;
-    });
-  }
-  
-  if (currentFilter === 'commented') {
-    filtered = filtered.filter(item => {
       if (item.source === 'dealabs') {
-        const comments = item.comments;
-        return comments !== undefined && comments !== null && Number(comments) > 15;
+        const itemDiscount = Number(item.discount || 0);
+        return itemDiscount >= minDiscount;
       }
+      
+      // Cache Vinted car le pourcentage est inconnu
       return false;
     });
   }
-  if (currentFilter === 'hot') {
-    filtered = filtered.filter(item => {
-      if (item.source !== 'dealabs') return false;
-      return Number(item.temperature || 0) > 100;
-    });
-  }
+  
   if (currentFilter === 'favorite') {
     filtered = filtered.filter(item => {
       return favorites.has(item.uuid);
@@ -334,8 +378,25 @@ const render = (items, pagination) => {
  */
 const sortDealsLocal = (items, sortValue) => {
   const sorted = [...items];
-  console.log('Sorting', sorted.length, 'items by', sortValue);
-
+  console.log('Sorting', sorted.length, 'items by', sortValue, 'currentFilter:', currentFilter);
+  
+  // Apply filter-based sorting (hot deals, most commented)
+  if (currentFilter === 'hot') {
+    return sorted.sort((a, b) => {
+      const tempA = Number(a.temperature || 0);
+      const tempB = Number(b.temperature || 0);
+      return tempB - tempA; // Descending
+    });
+  }
+  
+  if (currentFilter === 'commented') {
+    return sorted.sort((a, b) => {
+      const commentsA = Number(a.commentCount || a.comments || 0);
+      const commentsB = Number(b.commentCount || b.comments || 0);
+      return commentsB - commentsA; // Descending
+    });
+  }
+  
   switch (sortValue) {
     case 'price-asc':
       return sorted.sort((a, b) => {
@@ -415,43 +476,43 @@ const updateIndicators = (currentData) => {
   spanNbDeals.innerHTML = dealsItems.length;
   spanNbSales.innerHTML = vintedItems.length;
 
-  if (!vintedItems.length) {
-    spanP5.innerHTML = 'N/A';
-    spanP25.innerHTML = 'N/A';
-    spanP50.innerHTML = 'N/A';
-    spanAverage.innerHTML = 'N/A';
-    spanLifetime.innerHTML = 'N/A';
-    return;
-  }
-
-  const prices = vintedItems
+  // Calcul des prix avec toutes les donnees (Dealabs + Vinted)
+  const prices = currentData
     .map(item => getSalePrice(item))
     .filter(priceValue => priceValue !== null && Number.isFinite(priceValue))
     .sort((a, b) => a - b);
 
-  const percentile = (arr, p) => {
-    if (!arr.length) return null;
-    const idx = Math.floor((arr.length - 1) * p);
-    return arr[idx];
-  };
+  if (prices.length === 0) {
+    spanP5.innerHTML = 'N/A';
+    spanP25.innerHTML = 'N/A';
+    spanP50.innerHTML = 'N/A';
+    spanAverage.innerHTML = 'N/A';
+  } else {
+    const percentile = (arr, p) => {
+      if (!arr.length) return null;
+      const idx = Math.floor((arr.length - 1) * p);
+      return arr[idx];
+    };
 
-  const calculateAverage = (arr) => {
-    if (!arr.length) return null;
-    const sum = arr.reduce((acc, val) => acc + val, 0);
-    return sum / arr.length;
-  };
+    const calculateAverage = (arr) => {
+      if (!arr.length) return null;
+      const sum = arr.reduce((acc, val) => acc + val, 0);
+      return sum / arr.length;
+    };
 
-  const p5 = percentile(prices, 0.05);
-  const p25 = percentile(prices, 0.25);
-  const p50 = percentile(prices, 0.5);
-  const avg = calculateAverage(prices);
+    const p5 = percentile(prices, 0.05);
+    const p25 = percentile(prices, 0.25);
+    const p50 = percentile(prices, 0.5);
+    const avg = calculateAverage(prices);
 
-  spanP5.innerHTML = p5 !== null ? `€${p5.toFixed(2)}` : 'N/A';
-  spanP25.innerHTML = p25 !== null ? `€${p25.toFixed(2)}` : 'N/A';
-  spanP50.innerHTML = p50 !== null ? `€${p50.toFixed(2)}` : 'N/A';
-  spanAverage.innerHTML = avg !== null ? `€${avg.toFixed(2)}` : 'N/A';
+    spanP5.innerHTML = p5 !== null ? `€${p5.toFixed(2)}` : 'N/A';
+    spanP25.innerHTML = p25 !== null ? `€${p25.toFixed(2)}` : 'N/A';
+    spanP50.innerHTML = p50 !== null ? `€${p50.toFixed(2)}` : 'N/A';
+    spanAverage.innerHTML = avg !== null ? `€${avg.toFixed(2)}` : 'N/A';
+  }
 
-  const dateStrings = vintedItems.map(item => item.published || item.created || item.publication_date);
+  // Calcul de la duree de vie avec toutes les donnees
+  const dateStrings = currentData.map(item => item.published || item.created || item.publication_date);
   const dates = dateStrings
     .map(d => {
       const parsed = new Date(d);
@@ -511,9 +572,16 @@ const renderVintedSales = sales => {
   }
 
   currentVintedSales = sales.map(item => ({...item, source: 'vinted'}));
+  
+  // Update all available IDs
+  const dealsIds = extractUniqueIds(currentDeals);
+  const vintedIds = extractUniqueIds(currentVintedSales);
+  allAvailableIds = Array.from(new Set([...dealsIds, ...vintedIds])).sort();
+  
   setVintedSalesIndicators(sales);
   rebuildCombinedAndRender();
 };
+
 const fetchVintedSales = async legoId => {
   try {
     let url = `http://localhost:8092/sales/search`;
@@ -577,6 +645,9 @@ filterBtnFavorite.addEventListener('click', () => onFilterClick('favorite'));
  */
 selectSource.addEventListener('change', (event) => {
   currentSource = event.target.value;
+  currentLegoSetId = ''; // Reset Set ID when source changes
+  selectLegoSetIds.value = ''; // Reset the selector
+  currentPage = 1; // Reset to page 1
   rebuildCombinedAndRender();
 });
 
