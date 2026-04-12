@@ -102,21 +102,27 @@ const rebuildCombinedAndRender = () => {
  */
 const fetchDeals = async (page = 1, size = 6, filter = null) => {
   try {
-    let url = `${API_BASE_URL}/deals?page=${page}&size=${size}`;
+    // MODIFICATION : Appel a la nouvelle route /deals/search
+    // On demande limit=1000 pour que le front-end ait toutes les donnees pour calculer les moyennes
+    let url = `${API_BASE_URL}/deals/search?limit=1000`;
     
     if (filter) {
-      url += `&filter=${filter}`;
+      // L'API attend maintenant filterBy
+      url += `&filterBy=${filter}`;
     }
     
     const response = await fetch(url);
     const body = await response.json();
 
-    if (body.success !== true) {
-      console.error(body);
-      return {currentDeals, currentPagination};
+    // MODIFICATION : Le format renvoye par la nouvelle API est { limit, total, results }
+    if (body && body.results) {
+      return { 
+        result: body.results, 
+        meta: { total: body.total, page: 1, size: body.total } 
+      };
     }
 
-    return body.data;
+    return {currentDeals, currentPagination};
   } catch (error) {
     console.error(error);
     return {currentDeals, currentPagination};
@@ -136,10 +142,10 @@ const renderMarketplace = items => {
   marketplaceList.innerHTML = '';
   items.forEach(item => {
     try {
-      const isFavorite = favorites.has(item.uuid);
+      const isFavorite = favorites.has(item.uuid || item._id || item.id);
       const li = document.createElement('li');
       li.className = 'item';
-      li.id = `item-${item.uuid}`;
+      li.id = `item-${item.uuid || item._id || item.id}`;
       
       const imageDiv = document.createElement('div');
       const img = document.createElement('img');
@@ -191,7 +197,7 @@ const renderMarketplace = items => {
       const priceDiv = document.createElement('div');
       priceDiv.className = 'item-price';
       
-      // Add metadata (temperature, commentCount) for Dealabs items
+      // Add metadata (temperature, commentCount, discount) for Dealabs items
       if (item.source === 'dealabs') {
         const metaDiv = document.createElement('div');
         metaDiv.style.fontSize = '0.85rem';
@@ -203,8 +209,12 @@ const renderMarketplace = items => {
           const temp = Number(item.temperature);
           metaItems.push(` ${temp.toFixed(1)}C`);
         }
-        if (item.commentCount !== undefined && item.commentCount !== null) {
-          metaItems.push(` ${item.commentCount}`);
+        if (item.comments !== undefined || item.commentCount !== undefined) {
+          const coms = item.comments !== undefined ? item.comments : item.commentCount;
+          metaItems.push(` ${coms}`);
+        }
+        if (item.discount && item.discount > 0) {
+          metaItems.push(` -${item.discount}%`);
         }
         
         if (metaItems.length > 0) {
@@ -215,14 +225,15 @@ const renderMarketplace = items => {
       
       const button = document.createElement('button');
       button.className = 'favorite-btn';
-      button.setAttribute('data-uuid', item.uuid || '');
+      const itemId = item.uuid || item._id || item.id || '';
+      button.setAttribute('data-uuid', itemId);
       button.textContent = isFavorite ? '★' : '☆';
       button.addEventListener('click', (e) => {
         e.preventDefault();
-        if (favorites.has(item.uuid)) {
-          favorites.delete(item.uuid);
+        if (favorites.has(itemId)) {
+          favorites.delete(itemId);
         } else {
-          favorites.add(item.uuid);
+          favorites.add(itemId);
         }
         localStorage.setItem('favoriteDeals', JSON.stringify([...favorites]));
         renderMarketplace(combinedItems);
@@ -287,7 +298,6 @@ const updateFilterButtons = (activeFilter) => {
 const renderLegoSetIds = deals => {
   const currentValue = selectLegoSetIds.value;
   
-  // Get IDs based on current source
   let ids = [];
   
   if (currentSource === 'dealabs') {
@@ -318,19 +328,16 @@ const filterDeals = items => {
   
   if (currentLegoSetId) {
     filtered = filtered.filter(item => {
-      // Both Dealabs and Vinted must match the Set ID
       return String(item.id || item.setId || '') === String(currentLegoSetId);
     });
   }
 
-  // NOUVEAU : Suppression des annonces Dealabs sans prix valide
+  // Suppression des annonces Dealabs sans prix valide
   filtered = filtered.filter(item => {
     if (item.source === 'dealabs') {
       const price = getSalePrice(item);
-      // Si le prix est null, on retourne false pour exclure l'article
       return price !== null;
     }
-    // On laisse Vinted tranquille a cette etape
     return true;
   });
   
@@ -341,15 +348,13 @@ const filterDeals = items => {
         const itemDiscount = Number(item.discount || 0);
         return itemDiscount >= minDiscount;
       }
-      
-      // Cache Vinted car le pourcentage est inconnu
-      return false;
+      return false; // Cache Vinted car pas de reduction verifiee
     });
   }
   
   if (currentFilter === 'favorite') {
     filtered = filtered.filter(item => {
-      return favorites.has(item.uuid);
+      return favorites.has(item.uuid || item._id || item.id);
     });
   }
   
@@ -380,12 +385,11 @@ const sortDealsLocal = (items, sortValue) => {
   const sorted = [...items];
   console.log('Sorting', sorted.length, 'items by', sortValue, 'currentFilter:', currentFilter);
   
-  // Apply filter-based sorting (hot deals, most commented)
   if (currentFilter === 'hot') {
     return sorted.sort((a, b) => {
       const tempA = Number(a.temperature || 0);
       const tempB = Number(b.temperature || 0);
-      return tempB - tempA; // Descending
+      return tempB - tempA; 
     });
   }
   
@@ -393,21 +397,21 @@ const sortDealsLocal = (items, sortValue) => {
     return sorted.sort((a, b) => {
       const commentsA = Number(a.commentCount || a.comments || 0);
       const commentsB = Number(b.commentCount || b.comments || 0);
-      return commentsB - commentsA; // Descending
+      return commentsB - commentsA; 
     });
   }
   
   switch (sortValue) {
     case 'price-asc':
       return sorted.sort((a, b) => {
-        const priceA = a.source === 'dealabs' ? (getSalePrice(a) || 0) : (getSalePrice(a) || 0);
-        const priceB = b.source === 'dealabs' ? (getSalePrice(b) || 0) : (getSalePrice(b) || 0);
+        const priceA = getSalePrice(a) || 0;
+        const priceB = getSalePrice(b) || 0;
         return priceA - priceB;
       });
     case 'price-desc':
       return sorted.sort((a, b) => {
-        const priceA = a.source === 'dealabs' ? (getSalePrice(a) || 0) : (getSalePrice(a) || 0);
-        const priceB = b.source === 'dealabs' ? (getSalePrice(b) || 0) : (getSalePrice(b) || 0);
+        const priceA = getSalePrice(a) || 0;
+        const priceB = getSalePrice(b) || 0;
         return priceB - priceA;
       });
     case 'date-asc':
@@ -476,7 +480,6 @@ const updateIndicators = (currentData) => {
   spanNbDeals.innerHTML = dealsItems.length;
   spanNbSales.innerHTML = vintedItems.length;
 
-  // Calcul des prix avec toutes les donnees (Dealabs + Vinted)
   const prices = currentData
     .map(item => getSalePrice(item))
     .filter(priceValue => priceValue !== null && Number.isFinite(priceValue))
@@ -511,7 +514,6 @@ const updateIndicators = (currentData) => {
     spanAverage.innerHTML = avg !== null ? `€${avg.toFixed(2)}` : 'N/A';
   }
 
-  // Calcul de la duree de vie avec toutes les donnees
   const dateStrings = currentData.map(item => item.published || item.created || item.publication_date);
   const dates = dateStrings
     .map(d => {
@@ -573,7 +575,6 @@ const renderVintedSales = sales => {
 
   currentVintedSales = sales.map(item => ({...item, source: 'vinted'}));
   
-  // Update all available IDs
   const dealsIds = extractUniqueIds(currentDeals);
   const vintedIds = extractUniqueIds(currentVintedSales);
   allAvailableIds = Array.from(new Set([...dealsIds, ...vintedIds])).sort();
@@ -584,10 +585,11 @@ const renderVintedSales = sales => {
 
 const fetchVintedSales = async legoId => {
   try {
-    let url = `http://localhost:8092/sales/search`;
+    // MODIFICATION : Demander une grosse limite a l'API Vinted aussi
+    let url = `http://localhost:8092/sales/search?limit=1000`;
     
     if (legoId) {
-      url += `?legoSetId=${legoId}`;
+      url += `&legoSetId=${legoId}`;
     }
 
     console.log("URL appelee :", url);
@@ -595,14 +597,8 @@ const fetchVintedSales = async legoId => {
     const response = await fetch(url);
     const body = await response.json();
 
-    console.log("Body brut recu :", body);
-
-    let sales = body?.data?.result || body?.data || body || [];
-    
-    if (sales && !Array.isArray(sales)) {
-      console.log("Sales est un objet, aplatissement en cours...");
-      sales = Object.values(sales).flat();
-    }
+    // MODIFICATION : La nouvelle API renvoie les donnees dans "results"
+    let sales = body.results || [];
     
     console.log("Tableau sales final (avant rendu) :", sales);
     
@@ -623,9 +619,6 @@ const applyCurrentSort = () => {
  * Declaration of all Listeners
  */
 
-/**
- * Filter buttons with toggle functionality
- */
 const onFilterClick = (filterName) => {
   if (currentFilter === filterName) {
     currentFilter = null;
@@ -640,9 +633,6 @@ filterBtnCommented.addEventListener('click', () => onFilterClick('commented'));
 filterBtnHot.addEventListener('click', () => onFilterClick('hot'));
 filterBtnFavorite.addEventListener('click', () => onFilterClick('favorite'));
 
-/**
- * Source and discount filters
- */
 selectSource.addEventListener('change', (event) => {
   currentSource = event.target.value;
   currentLegoSetId = ''; // Reset Set ID when source changes
@@ -656,17 +646,11 @@ selectDiscount.addEventListener('change', (event) => {
   rebuildCombinedAndRender();
 });
 
-/**
- * Select the number of deals to display
- */
 selectShow.addEventListener('change', (event) => {
   currentPage = 1;
   render(combinedItems, currentPagination);
 });
 
-/**
- * Select a specific page to browse
- */
 selectPage.addEventListener('change', (event) => {
   currentPage = parseInt(event.target.value);
   render(combinedItems, currentPagination);
@@ -686,6 +670,7 @@ selectSort.addEventListener('change', (event) => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // L'appel initial demande tout pour peupler la page
   const deals = await fetchDeals(1, parseInt(selectShow.value));
   setCurrentDeals(deals);
   updateFilterButtons(currentFilter);
